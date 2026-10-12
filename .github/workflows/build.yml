@@ -1,0 +1,66 @@
+name: Build RadioLab Native APK
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'RadioLab_Native_Starter_0.1.0.zip'
+      - '.github/workflows/build.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK components
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Extract RadioLab source ZIP
+        run: |
+          ZIP_FILE="$(find . -maxdepth 2 -type f -name 'RadioLab_Native_Starter_0.1.0.zip' -print -quit)"
+          if [ -z "$ZIP_FILE" ]; then
+            echo "No se encontró RadioLab_Native_Starter_0.1.0.zip en el repositorio."
+            exit 1
+          fi
+          mkdir -p extracted
+          unzip -q "$ZIP_FILE" -d extracted
+          PROJECT_DIR="$(find extracted -type f -name 'settings.gradle.kts' -printf '%h\n' -quit)"
+          if [ -z "$PROJECT_DIR" ]; then
+            echo "No se encontró settings.gradle.kts dentro del ZIP."
+            exit 1
+          fi
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+
+      - name: Install Gradle
+        run: |
+          curl -fsSL https://services.gradle.org/distributions/gradle-8.11.1-bin.zip -o /tmp/gradle.zip
+          unzip -q /tmp/gradle.zip -d /tmp
+          echo "/tmp/gradle-8.11.1/bin" >> "$GITHUB_PATH"
+
+      - name: Build debug APK
+        run: gradle --no-daemon --stacktrace -p "$PROJECT_DIR" assembleDebug
+
+      - name: Upload APK artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: radiolab-build-output
+          path: |
+            extracted/**/build/outputs/apk/**/*.apk
+            extracted/**/build/outputs/**/*.txt
+          if-no-files-found: warn
+          retention-days: 7
